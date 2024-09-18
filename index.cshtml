@@ -1,0 +1,196 @@
+﻿@page
+@model IndexModel
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.AspNetCore.Mvc
+@using Microsoft.AspNetCore.Mvc.RazorPages
+@using Microsoft.Extensions.DependencyInjection
+@using Microsoft.EntityFrameworkCore
+@using System.ComponentModel.DataAnnotations
+@using System.Threading.Tasks
+@{
+    var isLoggedIn = User.Identity.IsAuthenticated;
+    var loginError = TempData["LoginError"] as string;
+    var registerError = TempData["RegisterError"] as string;
+}
+
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>My Web App</title>
+</head>
+<body>
+    @if (isLoggedIn)
+    {
+        <h2>Welcome, @User.Identity.Name!</h2>
+        <a href="/Account/Logout">Logout</a>
+    }
+    else
+    {
+        <h2>Login</h2>
+        @if (!string.IsNullOrEmpty(loginError))
+        {
+            <p style="color:red;">@loginError</p>
+        }
+        <form method="post">
+            <input type="hidden" name="handler" value="Login" />
+            <div>
+                <label>Email</label>
+                <input type="email" name="Email" required />
+            </div>
+            <div>
+                <label>Password</label>
+                <input type="password" name="Password" required />
+            </div>
+            <div>
+                <input type="checkbox" name="RememberMe" />
+                <label>Remember Me</label>
+            </div>
+            <button type="submit">Login</button>
+        </form>
+
+        <h2>Register</h2>
+        @if (!string.IsNullOrEmpty(registerError))
+        {
+            <p style="color:red;">@registerError</p>
+        }
+        <form method="post">
+            <input type="hidden" name="handler" value="Register" />
+            <div>
+                <label>Email</label>
+                <input type="email" name="Email" required />
+            </div>
+            <div>
+                <label>Password</label>
+                <input type="password" name="Password" required />
+            </div>
+            <div>
+                <label>Confirm Password</label>
+                <input type="password" name="ConfirmPassword" required />
+            </div>
+            <button type="submit">Register</button>
+        </form>
+    }
+
+    <h2>Home Page</h2>
+    <p>Welcome to the home page!</p>
+
+    @functions {
+        private SignInManager<IdentityUser> _signInManager;
+        private UserManager<IdentityUser> _userManager;
+
+        public IndexModel(SignInManager<IdentityUser> signInManager, UserManager<IdentityUser> userManager)
+        {
+            _signInManager = signInManager;
+            _userManager = userManager;
+        }
+
+        public async Task<IActionResult> OnPostAsync()
+        {
+            var handler = Request.Form["handler"];
+            if (handler == "Login")
+            {
+                return await OnPostLoginAsync();
+            }
+            else if (handler == "Register")
+            {
+                return await OnPostRegisterAsync();
+            }
+            return Page();
+        }
+
+        private async Task<IActionResult> OnPostLoginAsync()
+        {
+            var email = Request.Form["Email"];
+            var password = Request.Form["Password"];
+            var rememberMe = Request.Form["RememberMe"] == "on";
+
+            var result = await _signInManager.PasswordSignInAsync(email, password, rememberMe, lockoutOnFailure: true);
+            if (result.Succeeded)
+            {
+                return RedirectToPage("/Index");
+            }
+
+            TempData["LoginError"] = "Invalid login attempt.";
+            return RedirectToPage("/Index");
+        }
+
+        private async Task<IActionResult> OnPostRegisterAsync()
+        {
+            var email = Request.Form["Email"];
+            var password = Request.Form["Password"];
+            var confirmPassword = Request.Form["ConfirmPassword"];
+
+            if (password != confirmPassword)
+            {
+                TempData["RegisterError"] = "Passwords do not match.";
+                return RedirectToPage("/Index");
+            }
+
+            var user = new IdentityUser { UserName = email, Email = email };
+            var result = await _userManager.CreateAsync(user, password);
+            if (result.Succeeded)
+            {
+                await _signInManager.SignInAsync(user, isPersistent: false);
+                return RedirectToPage("/Index");
+            }
+
+            foreach (var error in result.Errors)
+            {
+                TempData["RegisterError"] = error.Description;
+            }
+            return RedirectToPage("/Index");
+        }
+    }
+
+    @code {
+        public class ApplicationDbContext : IdentityDbContext
+        {
+            public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options)
+                : base(options)
+            {
+            }
+        }
+
+        public class Program
+        {
+            public static void Main(string[] args)
+            {
+                var builder = WebApplication.CreateBuilder(args);
+
+                var connectionString = ""; 
+
+                builder.Services.AddDbContext<ApplicationDbContext>(options =>
+                    options.UseSqlServer(connectionString));
+
+                builder.Services.AddDefaultIdentity<IdentityUser>(options => options.SignIn.RequireConfirmedAccount = true)
+                    .AddRoles<IdentityRole>()
+                    .AddEntityFrameworkStores<ApplicationDbContext>()
+                    .AddDefaultTokenProviders();
+
+                builder.Services.AddRazorPages();
+
+                var app = builder.Build();
+
+                if (!app.Environment.IsDevelopment())
+                {
+                    app.UseExceptionHandler("/Error");
+                    app.UseHsts();
+                }
+
+                app.UseHttpsRedirection();
+                app.UseStaticFiles();
+
+                app.UseRouting();
+
+                app.UseAuthentication();
+                app.UseAuthorization();
+
+                app.MapRazorPages();
+
+                app.Run();
+            }
+        }
+    }
+</body>
+</html>
